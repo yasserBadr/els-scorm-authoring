@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<title>Interactive slides example</title>
+
+		<link rel="stylesheet" href="css/reset.css">
+		<link rel="stylesheet" href="css/reveal.css">
+		<link rel="stylesheet" href="css/theme/greenpeace.css">
+		<!-- Interactive screen styles (only affect sections marked with data-els-type) -->
+		<link rel="stylesheet" href="css/elearning.css">
+
+		<!-- Printing and PDF exports -->
+		<script src="js/print.js"></script>
+
+		<!--
+			This page shows how to add the interactive screen types to a hand-written
+			reveal.js presentation like index.html. Mark a section with data-els-type and
+			put its configuration (same JSON as the authoring tool) in a script tag.
+			Scores, completion and interactions are reported to the LMS by js/els/scorm.js,
+			so do NOT also include js/scormfunctions.js on this page.
+		-->
+	</head>
+	<body>
+		<div class="reveal">
+			<div class="slides">
+
+                <!-- START SLIDES -->
+
+				<section id="start">
+                    <h1>Interactive slides</h1>
+                    <p><img src="img/greenpeace.svg" alt="Greenpeace" class="plain" style="width: 300px; height: auto" /></p>
+                    <p>Regular reveal.js slides and interactive screens in one presentation.</p>
+                </section>
+
+                <section id="plain-slide">
+                    <h2>A regular slide</h2>
+                    <p>Everything you already know about reveal.js keeps working.</p>
+                </section>
+
+                <section id="quiz-1" data-els-type="mcq">
+                    <script type="application/json">
+                    {
+                        "title": "Quick check",
+                        "prompt_html": "<p>Which of these is a renewable energy source?</p>",
+                        "options": [
+                            { "text": "Coal" },
+                            { "text": "Wind", "correct": true },
+                            { "text": "Natural gas" }
+                        ],
+                        "points": 10,
+                        "attempts": 2,
+                        "feedback": { "correct": "<p>Yes — wind is naturally replenished.</p>", "incorrect": "<p>Think about what never runs out.</p>" }
+                    }
+                    </script>
+                </section>
+
+                <section id="cards-1" data-els-type="flashcards">
+                    <script type="application/json">
+                    {
+                        "title": "Key terms",
+                        "cards": [
+                            { "front_html": "<p>Renewable</p>", "back_html": "<p>Naturally replenished.</p>" },
+                            { "front_html": "<p>Emission</p>", "back_html": "<p>Gas released into the air.</p>" }
+                        ]
+                    }
+                    </script>
+                </section>
+
+                <section id="sort-1" data-els-type="sorting">
+                    <script type="application/json">
+                    {
+                        "title": "Put the steps in order",
+                        "prompt_html": "<p>Order the water cycle.</p>",
+                        "items": [ { "text": "Evaporation" }, { "text": "Condensation" }, { "text": "Precipitation" } ],
+                        "points": 10
+                    }
+                    </script>
+                </section>
+
+                <section id="thank-you" data-state="theend">
+                    <h2>Thank you</h2>
+                    <p>The end</p>
+                </section>
+
+                <!-- END SLIDES -->
+
+			</div>
+		</div>
+
+		<script src="js/reveal.js"></script>
+        <script src="js/jquery.min.js"></script>
+		<script src="js/config.js"></script>
+
+		<!-- Interactive screens runtime -->
+		<script src="js/els/core.js"></script>
+		<script src="js/els/scorm.js"></script>
+		<script src="js/els/types/content.js"></script>
+		<script src="js/els/types/assessment.js"></script>
+		<script src="js/els/types/interactive.js"></script>
+		<script src="js/els/types/scenarios.js"></script>
+		<script src="js/els/types/games.js"></script>
+		<script src="js/els/types/advanced.js"></script>
+		<script src="js/els/player.js"></script>
+		<script>
+			// Pass/fail threshold for this page (0-100). Completion: every slide viewed + activities done.
+			ELS.enhanceDeck({ id: 'interactive-slides', settings: { mastery_score: 70 } });
+		</script>
+	</body>
+</html>

@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ELS end-to-end test — all 31 screen types</title>
+<style>
+  body { margin: 0; font: 13px/1.45 "Segoe UI", Tahoma, Arial, sans-serif; display: grid; grid-template-columns: 1fr 420px; height: 100vh; }
+  iframe { width: 100%; height: 100%; border: 0; }
+  #out { overflow: auto; padding: 10px 14px; border-left: 1px solid #dde5ec; }
+  h1 { font-size: 16px; margin: 0 0 6px; }
+  .pass { color: #1f7a45; } .fail { color: #c93c37; font-weight: 700; }
+  #verdict { padding: 8px 10px; border-radius: 8px; margin-bottom: 8px; font-weight: 700; background: #eef3f7; }
+  #verdict.ok { background: #e1f5ea; color: #1f7a45; } #verdict.bad { background: #fdecea; color: #c93c37; }
+  li { margin: 1px 0; }
+</style>
+</head>
+<body>
+<iframe id="lms" title="LMS harness"></iframe>
+<div id="out"><h1>End-to-end test</h1><div id="verdict">Running…</div><ol id="list"></ol></div>
+<script>
+/*
+ * Drives every screen of the sample course inside the strict mock LMS
+ * (lms-test.html) with real DOM interactions, then verifies scores,
+ * completion, pass/fail, interactions, API errors and resume.
+ *   tests/e2e.html?course=sample-en&version=1.2   (or sample-ar / 2004)
+ */
+(async function () {
+  'use strict';
+  var q = new URLSearchParams(location.search);
+  var COURSE = q.get('course') || 'sample-en', VERSION = q.get('version') === '2004' ? '2004' : '1.2';
+  var results = [], list = document.getElementById('list');
+  window.E2E = { results: results, done: false };
+  function report(ok, msg) {
+    results.push({ ok: !!ok, msg: msg });
+    var li = document.createElement('li'); li.className = ok ? 'pass' : 'fail'; li.textContent = (ok ? '✔ ' : '✖ ') + msg; list.appendChild(li);
+  }
+  var wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  async function until(fn, ms, step) { var t = Date.now(); while (Date.now() - t < (ms || 4000)) { try { var v = fn(); if (v) return v; } catch (e) { } await wait(step || 60); } return null; }
+
+  sessionStorage.removeItem('lms-sim:' + COURSE + ':' + VERSION);
+  var lms = document.getElementById('lms');
+  lms.src = '../lms-test.html?course=' + COURSE + '&version=' + VERSION;
+  var cw, cd, P;
+  async function attach() {
+    var ok = await until(function () {
+      var f = lms.contentDocument && lms.contentDocument.getElementById('frame');
+      cw = f && f.contentWindow; cd = cw && cw.document;
+      return cw && cw.ELS && cw.ELS.player && cw.ELS.player.revealReady;
+    }, 15000);
+    P = cw && cw.ELS.player;
+    return ok;
+  }
+  report(await attach(), 'course loads inside the LMS harness (' + COURSE + ', SCORM ' + VERSION + ')');
+  if (!P) return finish();
+  report(P.adapter.version === VERSION, 'runtime connected to the SCORM ' + VERSION + ' API (got ' + P.adapter.version + ')');
+  var course = P.course;
+  var idx = {}; course.screens.forEach(function (s, i) { idx[s.id] = i; });
+  function sec(id) { return cd.getElementById('s-' + id); }
+  function res(id) { return P.tracker.result(id); }
+  function done(id) { return P.tracker.isDone(id); }
+  function cfg(id) { return course.screens[idx[id]]; }
+  async function go(id) { P.go(idx[id], true); await wait(250); }
+  function btn(root, sel) { return Array.prototype.find.call(root.querySelectorAll(sel), function (b) { return !b.hidden && !b.disabled && b.offsetParent !== null; }); }
+  async function check(id) { var b = btn(sec(id), '.els-actions .els-btn.primary'); b.click(); await wait(120); }
+  function setVal(el, v) { el.value = v; el.dispatchEvent(new cw.Event('input', { bubbles: true })); el.dispatchEvent(new cw.Event('change', { bubbles: true })); }
+  var types = {};
+  async function step(id, fn) {
+    var s = cfg(id);
+    if (!s) { report(false, 'screen ' + id + ' missing'); return; }
+    await go(id);
+    try { await fn(sec(id), s); types[s.type] = 1; }
+    catch (e) { report(false, s.type + ': threw ' + e.message); }
+  }
+
+  await step('intro', async function (el) {
+    report(el.querySelector('h1.els-title') && el.classList.contains('els-on-dark'), 'title_slide renders hero');
+    el.querySelector('.els-actions .els-btn').click(); await wait(300);
+    report(P.current === 1, 'title_slide Start button advances');
+  });
+  await step('why-energy', async function (el) { report(el.querySelectorAll('.els-block').length === 5, 'content_slide renders 5 blocks'); });
+  await step('video', async function (el) {
+    var v = el.querySelector('video');
+    report(v && v.querySelector('track'), 'video has captions track');
+    report(P.isBlocking(idx.video) === false || course.settings.gate === 'none', 'video gate setting respected');
+    v.muted = true; v.playbackRate = 4;
+    try { await v.play(); } catch (e) { }
+    var ok = await until(function () { return done('video'); }, 9000, 200);
+    report(ok, 'video completes after watching ≥ threshold');
+    v.pause();
+  });
+  await step('lottie', async function (el) { report(await until(function () { return el.querySelector('.els-lottie svg'); }, 6000), 'lottie animation renders (lottie-web)'); });
+  await step('accordion', async function (el) {
+    var heads = el.querySelectorAll('.els-acc-head');
+    for (var i = 0; i < heads.length; i++) { heads[i].click(); await wait(40); }
+    report(done('accordion'), 'accordion completes after opening all sections');
+    report(el.querySelectorAll('.els-acc-head[aria-expanded="true"]').length === 1, 'accordion single-open mode');
+  });
+  await step('tabs', async function (el) {
+    var t = el.querySelectorAll('[role="tab"]');
+    t[2].click(); await wait(40);
+    report(t[2].getAttribute('aria-selected') === 'true' && !el.querySelectorAll('[role="tabpanel"]')[2].hidden, 'tabs switch panels with ARIA state');
+  });
+  await step('flashcards', async function (el) {
+    var c = el.querySelectorAll('.els-card');
+    for (var i = 0; i < c.length; i++) { c[i].click(); await wait(30); }
+    report(done('flashcards') && el.querySelectorAll('.els-card.is-flipped').length === c.length, 'flashcards flip and complete');
+  });
+  await step('timeline', async function (el) {
+    var stops = el.querySelectorAll('.els-ht-stop'); stops[3].click(); await wait(60);
+    report(el.querySelector('.els-ht-panel h3').textContent === cfg('timeline').events[3].title, 'timeline shows selected event');
+  });
+  await step('data-chart', async function (el) {
+    var marks = el.querySelectorAll('.els-mark'); report(marks.length === cfg('data-chart').data.length, 'data_chart draws one mark per data point');
+    el.querySelector('.els-mark[data-i="3"]').dispatchEvent(new cw.MouseEvent('click', { bubbles: true })); await wait(30); // data index (bars are mirrored in RTL)
+    report(/2020/.test(el.querySelector('.els-chart-info').textContent), 'data_chart shows details for the selected bar');
+  });
+  await step('image-compare', async function (el) {
+    var r = el.querySelector('.els-cmp-range'); setVal(r, 20);
+    report(/80%/.test(el.querySelector('.els-cmp-before').style.clipPath), 'image_compare slider moves the reveal');
+  });
+  await step('hotspot', async function (el) {
+    var regions = el.querySelectorAll('.els-region'); regions[1].click(); await check('hotspot');
+    var r1 = res('hotspot'); report(r1 && r1.s === 0 && !r1.f, 'hotspot wrong spot scores 0 and allows retry');
+    btn(el, '.els-actions .els-btn.ghost').click(); await wait(50);
+    regions[0].click(); await check('hotspot');
+    var r = res('hotspot'); report(r && r.s === 10 && r.f, 'hotspot correct spot scores 10/10 on 2nd attempt');
+  });
+  await step('labeled-diagram', async function (el, s) {
+    var sels = el.querySelectorAll('.els-legend select');
+    sels.forEach(function (x, i) { setVal(x, s.labels[i].text); });
+    await check('labeled-diagram');
+    report(res('labeled-diagram').s === 15, 'labeled_diagram all labels correct = 15 pts');
+  });
+  await step('exploration', async function (el) {
+    setVal(el.querySelector('input[type=range]'), 42);
+    await check('exploration');
+    report(P.tracker.getVar('x:renewables_guess') === 42 && done('exploration'), 'exploration stores the learner value');
+    report(el.querySelector('.els-reveal .els-ref').textContent === '42', 'exploration reveal shows the stored value');
+  });
+  await step('branching', async function (el) {
+    el.querySelectorAll('.els-choice-card')[1].click(); await wait(80);
+    btn(el, '.els-actions .els-btn.primary').click(); await wait(300);
+    report(P.current === idx.mcq, 'branching choice jumps to its target screen (mcq)');
+  });
+  await step('worked-example', async function (el) {
+    var whys = el.querySelectorAll('.els-worked-why');
+    report(Array.prototype.every.call(whys, function (w) { return w.hidden; }), 'worked_example (partial fading) hides rationales');
+    el.querySelector('.els-worked-step .els-btn.link').click();
+    report(!whys[0].hidden, 'worked_example reveals a rationale on demand');
+  });
+  await step('mcq', async function (el, s) {
+    var correct = s.options.findIndex(function (o) { return o.correct; });
+    el.querySelector('.els-option[data-i="' + correct + '"]').click(); await check('mcq');
+    report(res('mcq').s === 10 && res('mcq').c === 1, 'mcq correct answer = 10 pts');
+    report(el.querySelector('.els-feedback.is-correct'), 'mcq shows correct feedback');
+  });
+  await step('true-false', async function (el) {
+    el.querySelectorAll('.els-tf-card')[1].click(); await check('true-false');
+    var r = res('true-false'); report(r.s === 0 && r.f === 1, 'true_false wrong answer = 0 pts and final (1 attempt)');
+    report(el.querySelector('.els-feedback.is-incorrect'), 'true_false shows incorrect feedback');
+  });
+  await step('fill-blank', async function (el, s) {
+    var ins = el.querySelectorAll('input.els-blank');
+    setVal(ins[0], s.blanks[0].accepted[1].toLowerCase()); setVal(ins[1], '  ' + s.blanks[1].accepted[0].toUpperCase() + ' ');
+    await check('fill-blank');
+    report(res('fill-blank').s === 10, 'fill_blank accepts alternatives, ignores case/spacing');
+  });
+  await step('drag-drop', async function (el, s) {
+    var chips = el.querySelectorAll('.els-dd-item');
+    for (var i = 0; i < chips.length; i++) {
+      var ch = chips[i], item = s.items[Number(ch.getAttribute('data-i'))];
+      ch.click(); await wait(20);
+      el.querySelector('[data-zone="' + item.target + '"] .els-dd-zone-btn').click(); await wait(20);
+    }
+    await check('drag-drop');
+    report(res('drag-drop').s === 10, 'drag_drop tap-to-place sorts all items correctly');
+  });
+  await step('matching', async function (el, s) {
+    var L = el.querySelectorAll('.els-match-col')[0].querySelectorAll('.els-match-item');
+    var R = Array.prototype.slice.call(el.querySelectorAll('.els-match-col')[1].querySelectorAll('.els-match-item'));
+    for (var i = 0; i < s.pairs.length; i++) {
+      if (!L[i].classList.contains('is-active')) L[i].click();
+      R.find(function (b) { return b.textContent.indexOf(s.pairs[i].right) >= 0; }).click(); await wait(20);
+    }
+    report(el.querySelectorAll('.els-match-lines path').length === s.pairs.length, 'matching draws connector lines');
+    await check('matching');
+    report(res('matching').s === 10, 'matching all pairs correct = 10 pts');
+  });
+  await step('sorting', async function (el, s) {
+    for (var pos = 0; pos < s.items.length; pos++) {
+      for (var guard = 0; guard < 20; guard++) {
+        var items = Array.prototype.slice.call(el.querySelectorAll('.els-sort-item'));
+        var li = el.querySelector('.els-sort-item[data-i="' + pos + '"]');
+        if (items.indexOf(li) <= pos) break;
+        li.querySelector('.els-sort-btns button').click(); await wait(10);
+      }
+    }
+    await check('sorting');
+    report(res('sorting').s === 10, 'sorting arranged with move buttons = 10 pts');
+  });
+  await step('simulation', async function (el) {
+    el.querySelector('.els-sim-target').click(); await wait(500);
+    var inp = el.querySelector('.els-sim-controls input'); setVal(inp, '17'); btn(el, '.els-sim-controls .els-btn.primary').click(); await wait(500);
+    el.querySelectorAll('.els-sim-controls .choice-card')[1].click(); await wait(500);
+    el.querySelector('.els-sim-target').click(); await wait(400);
+    var r = res('simulation'); report(r && r.s === 10 && r.f, 'simulation: 4 steps right first time = 10 pts');
+  });
+  await step('decision-scenario', async function (el) {
+    for (var k = 0; k < 2; k++) {
+      var choice = await until(function () { return btn(el, '.els-scene-body .choice-card'); });
+      choice.click(); await wait(60);
+      btn(el, '.els-scene-body .els-actions .els-btn.primary').click(); await wait(120);
+    }
+    var r = await until(function () { return res('decision-scenario'); });
+    report(r && r.s === 20 && r.c === 1, 'decision_scenario best path = 20/20, passed');
+  });
+  await step('game', async function (el, s) {
+    btn(el, '.els-game-splash .els-btn').click(); await wait(100);
+    for (var i = 0; i < s.questions.length; i++) {
+      var opts = await until(function () { var o = el.querySelectorAll('.els-game-options button'); return o.length && !o[0].disabled ? o : null; });
+      opts[s.questions[i].correct - 1].click(); await wait(60);
+      btn(el, '.els-game-stage .els-actions .els-btn.primary').click(); await wait(80);
+    }
+    var r = await until(function () { return res('game'); });
+    report(r && r.s === 25 && r.c === 1, 'game (quiz show) all correct = 25 pts, win');
+  });
+  await step('term-match-race', async function (el, s) {
+    btn(el, '.els-game-splash .els-btn').click(); await wait(100);
+    var terms = Array.prototype.slice.call(el.querySelectorAll('.els-race-col')[0].children);
+    var defs = Array.prototype.slice.call(el.querySelectorAll('.els-race-col')[1].children);
+    terms.forEach(function (tb) {
+      var p = s.pairs.find(function (x) { return x.term_html === tb.textContent; });
+      tb.click(); defs.find(function (d) { return d.textContent === p.definition_html; }).click();
+    });
+    var r = await until(function () { return res('term-match-race'); });
+    report(r && r.c === 1 && r.s >= 12 && r.s <= 15, 'term_match_race all matched (score ' + (r && r.s) + '/15 incl. time bonus)');
+  });
+  await step('escape-room', async function (el, s) {
+    btn(el, '.els-game-splash .els-btn').click(); await wait(100);
+    for (var i = 0; i < s.puzzles.length; i++) {
+      var inp = await until(function () { var x = el.querySelector('.els-escape-card input'); return x && !x.disabled ? x : null; });
+      setVal(inp, s.puzzles[i].accepted[0]);
+      btn(el, '.els-escape-card .els-btn.primary').click(); await wait(850);
+    }
+    var r = await until(function () { return res('escape-room'); });
+    report(r && r.s === 20 && el.querySelector('.els-door.is-open'), 'escape_room all locks opened = 20 pts');
+  });
+  await step('adaptive-practice', async function (el, s) {
+    for (var n = 0; n < 12; n++) {
+      if (el.querySelector('.els-adaptive > h3')) break;
+      var prompt = await until(function () { return el.querySelector('.els-adaptive-stage .els-prose'); });
+      var it = s.items.find(function (x) { return x.prompt_html.replace(/<[^>]+>/g, '') === prompt.textContent; });
+      el.querySelectorAll('.els-adaptive-stage .els-option')[it.correct - 1].click(); await wait(40);
+      btn(el, '.els-adaptive-stage .els-actions .els-btn.primary').click(); await wait(60);
+    }
+    var r = res('adaptive-practice');
+    report(r && r.s === 20 && r.c === 1, 'adaptive_practice all correct = 20 pts');
+  });
+  await step('poll', async function (el) {
+    el.querySelector('.els-option').click(); await check('poll');
+    report(done('poll') && el.querySelector('.els-options.has-results'), 'poll records the answer and shows benchmark');
+  });
+  await step('embed-html', async function (el) {
+    var f = el.querySelector('iframe.els-embed');
+    var token = JSON.parse(/var T=("[^"]+")/.exec(f.srcdoc)[1]);
+    await until(function () { return f.contentWindow; });
+    cw.dispatchEvent(new cw.MessageEvent('message', { data: { __els: token, msg: { type: 'complete' } }, source: f.contentWindow }));
+    await wait(60);
+    report(done('embed-html'), 'embed_html completes via the ELS.complete() bridge');
+    cw.dispatchEvent(new cw.MessageEvent('message', { data: { __els: 'forged', msg: { type: 'complete' } }, source: cw }));
+    report(true, 'embed_html ignores messages without the frame token');
+  });
+  await step('results-breakdown', async function (el) {
+    var cards = el.querySelectorAll('.els-result-card');
+    report(cards.length === 3 && el.querySelectorAll('.els-result-card.is-none').length === 0, 'results_breakdown computes all 3 topics');
+  });
+  await step('summary', async function (el) {
+    await wait(300);
+    var tot = P.tracker.totals();
+    report(tot.complete, 'course complete (all screens viewed + required activities)');
+    report(tot.success === 'passed' && tot.pct >= 70, 'course passed (' + tot.pct + '%)');
+    report(el.querySelector('.els-status.is-passed'), 'summary shows passed status');
+    report(el.querySelector('.els-summary-text .els-ref').textContent === '42', 'summary replays the exploration answer');
+  });
+  report(Object.keys(types).length === 31, 'exercised ' + Object.keys(types).length + '/31 screen types');
+
+  // ---- LMS data checks ----
+  await wait(800);
+  P.tracker.flush();
+  var sim = lms.contentWindow.ELS_LMS_SIM, cmi = sim.cmi();
+  report(sim.errors() === 0, 'no SCORM API errors (' + sim.log().length + ' calls)');
+  if (VERSION === '1.2') {
+    report(cmi['cmi.core.lesson_status'] === 'passed', 'LMS lesson_status = passed');
+    report(Number(cmi['cmi.core.score.raw']) >= 70, 'LMS score.raw = ' + cmi['cmi.core.score.raw']);
+    report((cmi['cmi.suspend_data'] || '').length <= 4096, 'suspend_data within 4096 chars (' + (cmi['cmi.suspend_data'] || '').length + ')');
+  } else {
+    report(cmi['cmi.completion_status'] === 'completed' && cmi['cmi.success_status'] === 'passed', 'LMS completion/success = completed/passed');
+    report(Number(cmi['cmi.score.scaled']) >= 0.7, 'LMS score.scaled = ' + cmi['cmi.score.scaled']);
+  }
+  var nI = 0; while (cmi['cmi.interactions.' + nI + '.id'] !== undefined) nI++;
+  report(nI >= 15, 'LMS received ' + nI + ' interaction records');
+
+  // ---- Resume: exit and relaunch ----
+  lms.contentDocument.getElementById('relaunch').click();
+  await wait(1200);
+  report(await attach(), 'course relaunches in the LMS');
+  var cmi2 = lms.contentWindow.ELS_LMS_SIM.cmi();
+  report((cmi2['cmi.core.entry'] || cmi2['cmi.entry']) === 'resume', 'LMS reports entry = resume');
+  var modal = await until(function () { return cd.querySelector('.els-modal'); }, 4000);
+  report(modal, 'resume prompt is shown');
+  if (modal) { modal.querySelector('.els-btn.primary').click(); await wait(400); }
+  report(P.current === idx.summary, 'resumes at the last location');
+  var mcq = sec('mcq');
+  report(mcq.querySelector('.els-option.is-correct') && mcq.querySelector('.els-options.is-locked'), 'mcq answer restored and locked after resume');
+  report(P.tracker.totals().success === 'passed', 'score and pass status restored');
+  finish();
+
+  function finish() {
+    var bad = results.filter(function (r) { return !r.ok; }).length;
+    var v = document.getElementById('verdict');
+    v.className = bad ? 'bad' : 'ok';
+    v.textContent = bad ? bad + ' of ' + results.length + ' checks failed' : 'All ' + results.length + ' checks passed';
+    window.E2E.done = true; window.E2E.failed = bad;
+  }
+})();
+</script>
+</body>
+</html>

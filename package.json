@@ -1,0 +1,17 @@
+{
+  "name": "gpes-html5-scorm-presentation",
+  "version": "2.0.0",
+  "private": true,
+  "description": "reveal.js presentations and interactive e-learning screens (31 types) with an authoring studio and SCORM 1.2 / 2004 export.",
+  "license": "MIT",
+  "scripts": {
+    "start": "node tools/serve.js 8080",
+    "test": "node --test tests/unit.test.js",
+    "samples": "node tools/make-samples.js",
+    "build:scorm": "node tools/build-scorm.js",
+    "build:samples": "node tools/build-scorm.js courses/sample-en.js --version 1.2 && node tools/build-scorm.js courses/sample-ar.js --version 2004"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

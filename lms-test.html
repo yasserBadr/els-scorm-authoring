@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LMS test harness — SCORM 1.2 / 2004</title>
+<style>
+  :root { --p: #3b759e; --d: #134674; --line: #dde5ec; --bad: #c93c37; --ok: #1f9a5a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.45 "Segoe UI", Tahoma, Arial, sans-serif; color: #1f2d3a; background: #eef3f7; height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: var(--d); color: #fff; }
+  header strong { font-size: 15px; margin-right: 8px; }
+  header select, header button { height: 30px; border-radius: 7px; border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.1); color: #fff; padding: 0 10px; cursor: pointer; }
+  header select option { color: #000; }
+  main { display: grid; grid-template-columns: 1fr 440px; min-height: 0; }
+  iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+  aside { background: #fff; border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .sum { padding: 10px 12px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+  .sum div { display: flex; flex-direction: column; }
+  .sum span { color: #61707d; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .sum b { font-size: 14px; word-break: break-all; }
+  .verdict { grid-column: 1 / -1; padding: 6px 10px; border-radius: 8px; font-weight: 700; }
+  .verdict.ok { background: #e1f5ea; color: var(--ok); } .verdict.bad { background: #fdecea; color: var(--bad); }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  .tabs button { flex: 1; padding: 8px; border: 0; background: none; cursor: pointer; font-weight: 600; color: #61707d; border-bottom: 2px solid transparent; }
+  .tabs button[aria-selected="true"] { color: var(--d); border-bottom-color: var(--p); }
+  .pane { flex: 1; overflow: auto; min-height: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { padding: 4px 8px; border-bottom: 1px solid #eef2f5; text-align: left; vertical-align: top; word-break: break-all; }
+  th { position: sticky; top: 0; background: #f5f8fa; }
+  tr.err td { background: #fdecea; color: var(--bad); }
+  .mono { font-family: Consolas, Menlo, monospace; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; grid-template-rows: 60vh 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <strong>LMS test harness</strong>
+  <label>Course <select id="course"><option value="sample-en">English sample</option><option value="sample-ar">Arabic sample (RTL)</option><option value="__author">From ELS Studio</option></select></label>
+  <label>API <select id="version"><option value="1.2">SCORM 1.2</option><option value="2004">SCORM 2004</option></select></label>
+  <label>Mastery <select id="mastery"><option value="">from course</option><option value="50">LMS: 50%</option><option value="80">LMS: 80%</option></select></label>
+  <button id="relaunch" type="button" title="Terminate the session and launch again with the stored data (tests resume)">Exit &amp; relaunch</button>
+  <button id="reset" type="button" title="Delete all stored learner data">Reset learner data</button>
+</header>
+<main>
+  <iframe id="frame" title="Course under test"></iframe>
+  <aside>
+    <div class="sum" id="sum"></div>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" aria-selected="true" data-tab="log">Call log</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="model">Data model</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="inter">Interactions</button>
+    </div>
+    <div class="pane" id="pane"></div>
+  </aside>
+</main>
+<script>
+/*
+ * Strict mock LMS. Implements the SCORM 1.2 (window.API) and SCORM 2004
+ * (window.API_1484_11) run-time APIs with data-model validation, so format
+ * errors in the course's LMS calls show up as red rows in the log.
+ * Learner data persists in sessionStorage per course + version (for resume).
+ */
+(function () {
+  'use strict';
+  var q = new URLSearchParams(location.search);
+  var courseSel = document.getElementById('course'), verSel = document.getElementById('version'), masterySel = document.getElementById('mastery');
+  courseSel.value = q.get('course') || 'sample-en';
+  verSel.value = q.get('version') === '2004' ? '2004' : '1.2';
+  masterySel.value = q.get('mastery') || '';
+  var version = verSel.value, key = 'lms-sim:' + courseSel.value + ':' + version;
+  var log = [], errors = 0, tab = 'log';
+
+  var V12 = {
+    status: ['passed', 'completed', 'failed', 'incomplete', 'browsed', 'not attempted'],
+    exit: ['time-out', 'suspend', 'logout', ''],
+    itype: ['true-false', 'choice', 'fill-in', 'matching', 'performance', 'sequencing', 'likert', 'numeric'],
+    result: ['correct', 'wrong', 'unanticipated', 'neutral']
+  };
+  var V04 = {
+    completion: ['completed', 'incomplete', 'not attempted', 'unknown'],
+    success: ['passed', 'failed', 'unknown'],
+    exit: ['time-out', 'suspend', 'logout', 'normal', ''],
+    itype: ['true-false', 'choice', 'fill-in', 'long-fill-in', 'matching', 'performance', 'sequencing', 'likert', 'numeric', 'other'],
+    result: ['correct', 'incorrect', 'unanticipated', 'neutral']
+  };
+  var isNum = function (v) { return v !== '' && isFinite(Number(v)); };
+  var timespan12 = /^\d{2,4}:\d{2}:\d{2}(\.\d{1,2})?$/;
+  var time12 = /^\d{2}:\d{2}:\d{2}(\.\d{1,2})?$/;
+  var dur04 = /^P(?!$)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(\.\d{1,2})?S)?)?$/;
+  var stamp04 = /^\d{4}(-\d{2}(-\d{2}(T\d{2}(:\d{2}(:\d{2}(\.\d{1,2})?)?)?)?)?)?/;
+
+  function load() { try { return JSON.parse(sessionStorage.getItem(key)) || {}; } catch (e) { return {}; } }
+  var store = load();
+  var cmi = store.cmi || {};
+  var launches = (store.launches || 0) + 1;
+  function persist() { sessionStorage.setItem(key, JSON.stringify({ cmi: cmi, launches: launches })); }
+
+  function makeApi(v) {
+    var state = 'not-init', lastErr = '0', is12 = v === '1.2';
+    var count = function () { var n = 0; while (cmi['cmi.interactions.' + n + '.id'] !== undefined) n++; return n; };
+    var ro12 = ['cmi.core.student_id', 'cmi.core.student_name', 'cmi.core.credit', 'cmi.core.entry', 'cmi.core.total_time', 'cmi.core.lesson_mode', 'cmi.launch_data', 'cmi.student_data.mastery_score', 'cmi.core._children', 'cmi.interactions._count', 'cmi.core.score._children', 'cmi.interactions._children'];
+    var ro04 = ['cmi.learner_id', 'cmi.learner_name', 'cmi.credit', 'cmi.entry', 'cmi.total_time', 'cmi.mode', 'cmi.launch_data', 'cmi.scaled_passing_score', 'cmi.interactions._count', 'cmi.completion_threshold', 'cmi._version'];
+    var wo12 = ['cmi.core.session_time', 'cmi.core.exit'];
+    var wo04 = ['cmi.session_time', 'cmi.exit'];
+    var mastery = masterySel.value;
+    var init = {};
+    if (is12) {
+      init = { 'cmi.core.student_id': 'learner-1', 'cmi.core.student_name': 'Doe, Jane', 'cmi.core.credit': 'credit', 'cmi.core.lesson_mode': 'normal',
+        'cmi.core.entry': cmi['cmi.suspend_data'] ? 'resume' : 'ab-initio', 'cmi.core.total_time': '0000:00:00', 'cmi.launch_data': '',
+        'cmi.student_data.mastery_score': mastery, 'cmi.core.lesson_status': cmi['cmi.core.lesson_status'] || 'not attempted' };
+    } else {
+      init = { 'cmi.learner_id': 'learner-1', 'cmi.learner_name': 'Jane Doe', 'cmi.credit': 'credit', 'cmi.mode': 'normal', 'cmi._version': '1.0',
+        'cmi.entry': cmi['cmi.suspend_data'] ? 'resume' : 'ab-initio', 'cmi.total_time': 'PT0S', 'cmi.launch_data': '',
+        'cmi.completion_status': cmi['cmi.completion_status'] || 'unknown', 'cmi.success_status': cmi['cmi.success_status'] || 'unknown' };
+      if (mastery) init['cmi.scaled_passing_score'] = String(Number(mastery) / 100);
+    }
+    Object.keys(init).forEach(function (k) { if (init[k] !== undefined && (cmi[k] === undefined || ro12.concat(ro04).indexOf(k) >= 0)) cmi[k] = init[k]; });
+
+    function rec(fn, args, ret, err) {
+      var row = { t: new Date().toLocaleTimeString(), fn: fn, args: args, ret: ret, err: err };
+      log.push(row); if (err && err !== '0') errors++;
+      render();
+    }
+    function fail(code, fn, args, ret) { lastErr = code; rec(fn, args, ret, code); return ret; }
+
+    function validate(k, val) {
+      var m;
+      if (is12) {
+        if (k === 'cmi.core.lesson_status') return V12.status.indexOf(val) >= 0 && val !== 'not attempted';
+        if (/^cmi\.core\.score\.(raw|min|max)$/.test(k)) return val === '' || (isNum(val) && Number(val) >= 0 && Number(val) <= 100);
+        if (k === 'cmi.core.lesson_location') return val.length <= 255;
+        if (k === 'cmi.suspend_data') return val.length <= 4096;
+        if (k === 'cmi.core.session_time') return timespan12.test(val);
+        if (k === 'cmi.core.exit') return V12.exit.indexOf(val) >= 0;
+        if ((m = /^cmi\.interactions\.(\d+)\.(.+)$/.exec(k))) {
+          var f = m[2];
+          if (f === 'id') return /^[^\s]{1,255}$/.test(val);
+          if (f === 'type') return V12.itype.indexOf(val) >= 0;
+          if (f === 'result') return V12.result.indexOf(val) >= 0 || isNum(val);
+          if (f === 'weighting') return isNum(val);
+          if (f === 'time') return time12.test(val);
+          if (f === 'latency') return timespan12.test(val);
+          if (f === 'student_response' || /^correct_responses\.\d+\.pattern$/.test(f)) return val.length <= 255;
+          return false;
+        }
+        return null; // unknown element
+      }
+      if (k === 'cmi.completion_status') return V04.completion.indexOf(val) >= 0;
+      if (k === 'cmi.success_status') return V04.success.indexOf(val) >= 0;
+      if (k === 'cmi.score.scaled') return isNum(val) && Number(val) >= -1 && Number(val) <= 1;
+      if (/^cmi\.score\.(raw|min|max)$/.test(k)) return isNum(val);
+      if (k === 'cmi.progress_measure') return isNum(val) && Number(val) >= 0 && Number(val) <= 1;
+      if (k === 'cmi.location') return val.length <= 1000;
+      if (k === 'cmi.suspend_data') return val.length <= 64000;
+      if (k === 'cmi.session_time') return dur04.test(val);
+      if (k === 'cmi.exit') return V04.exit.indexOf(val) >= 0;
+      if ((m = /^cmi\.interactions\.(\d+)\.(.+)$/.exec(k))) {
+        var g = m[2];
+        if (g === 'id') return /^[^\s]{1,4000}$/.test(val);
+        if (g === 'type') return V04.itype.indexOf(val) >= 0;
+        if (g === 'result') return V04.result.indexOf(val) >= 0 || isNum(val);
+        if (g === 'weighting') return isNum(val);
+        if (g === 'timestamp') return stamp04.test(val);
+        if (g === 'latency') return dur04.test(val);
+        if (g === 'description') return val.length <= 250;
+        if (g === 'learner_response' || /^correct_responses\.\d+\.pattern$/.test(g)) return val.length <= 4000;
+        return false;
+      }
+      return null;
+    }
+
+    function set(fn, k, val) {
+      var args = [k, val];
+      if (state !== 'running') return fail(is12 ? '301' : (state === 'done' ? '133' : '132'), fn, args, 'false');
+      val = String(val);
+      if ((is12 ? ro12 : ro04).indexOf(k) >= 0) return fail(is12 ? '403' : '404', fn, args, 'false');
+      var mI = /^cmi\.interactions\.(\d+)\./.exec(k);
+      if (mI && Number(mI[1]) > count()) return fail(is12 ? '201' : '351', fn, args, 'false');
+      if (mI && Number(mI[1]) === count() && !/\.id$/.test(k)) return fail(is12 ? '201' : '408', fn, args, 'false');
+      var ok = validate(k, val);
+      if (ok === null) return fail(is12 ? '401' : '401', fn, args, 'false');
+      if (!ok) return fail(is12 ? '405' : '406', fn, args, 'false');
+      cmi[k] = val; lastErr = '0'; rec(fn, args, 'true', '0');
+      return 'true';
+    }
+    function get(fn, k) {
+      if (state !== 'running') return fail(is12 ? '301' : (state === 'done' ? '123' : '122'), fn, [k], '');
+      if (k === 'cmi.interactions._count') { lastErr = '0'; rec(fn, [k], String(count()), '0'); return String(count()); }
+      if ((is12 ? wo12 : wo04).indexOf(k) >= 0) return fail(is12 ? '404' : '405', fn, [k], '');
+      if (is12 && /^cmi\.interactions\.\d+\./.test(k)) return fail('404', fn, [k], '');
+      var v = cmi[k];
+      if (v === undefined) {
+        var known = is12 ? /^cmi\.(suspend_data|core\.lesson_location|core\.score\.(raw|min|max))$/ : /^cmi\.(suspend_data|location|score\.(raw|min|max|scaled)|progress_measure|scaled_passing_score)$/;
+        if (known.test(k)) { lastErr = is12 ? '0' : '403'; rec(fn, [k], '', lastErr === '403' ? '0' : '0'); return ''; }
+        return fail('401', fn, [k], '');
+      }
+      lastErr = '0'; rec(fn, [k], v, '0');
+      return v;
+    }
+    var api = {};
+    var n = is12 ? ['LMSInitialize', 'LMSFinish', 'LMSGetValue', 'LMSSetValue', 'LMSCommit', 'LMSGetLastError', 'LMSGetErrorString', 'LMSGetDiagnostic']
+                 : ['Initialize', 'Terminate', 'GetValue', 'SetValue', 'Commit', 'GetLastError', 'GetErrorString', 'GetDiagnostic'];
+    api[n[0]] = function (p) {
+      if (p !== '') return fail('201', n[0], [p], 'false');
+      if (state === 'running') return fail(is12 ? '101' : '103', n[0], [p], 'false');
+      if (state === 'done' && !is12) return fail('104', n[0], [p], 'false');
+      state = 'running'; lastErr = '0'; rec(n[0], [p], 'true', '0'); return 'true';
+    };
+    api[n[1]] = function (p) {
+      if (state !== 'running') return fail(is12 ? '301' : '113', n[1], [p], 'false');
+      state = 'done'; lastErr = '0'; persist(); rec(n[1], [p], 'true', '0'); return 'true';
+    };
+    api[n[2]] = function (k) { return get(n[2], k); };
+    api[n[3]] = function (k, v) { return set(n[3], k, v); };
+    api[n[4]] = function (p) {
+      if (state !== 'running') return fail(is12 ? '301' : '143', n[4], [p], 'false');
+      persist(); lastErr = '0'; rec(n[4], [p], 'true', '0'); return 'true';
+    };
+    api[n[5]] = function () { return lastErr; };
+    api[n[6]] = function (c) { return { '0': 'No error', '101': 'General exception', '103': 'Already initialized', '104': 'Content instance terminated', '113': 'Termination before initialization', '122': 'Retrieve before init', '123': 'Retrieve after termination', '132': 'Store before init', '133': 'Store after termination', '143': 'Commit after termination', '201': 'Invalid argument', '301': 'Not initialized', '351': 'General set failure', '401': 'Not implemented / undefined element', '403': 'Read only / value not initialized', '404': 'Write only', '405': 'Incorrect data type', '406': 'Type mismatch', '408': 'Dependency not established' }[c] || 'Error'; };
+    api[n[7]] = function (c) { return 'mock LMS diagnostic for ' + c; };
+    return api;
+  }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function render() {
+    var is12 = version === '1.2';
+    var sd = cmi['cmi.suspend_data'] || '';
+    var nI = 0; while (cmi['cmi.interactions.' + nI + '.id'] !== undefined) nI++;
+    var fields = is12 ? [['Status', cmi['cmi.core.lesson_status']], ['Score (raw)', cmi['cmi.core.score.raw']], ['Location', cmi['cmi.core.lesson_location']], ['Exit', cmi['cmi.core.exit']], ['Session time', cmi['cmi.core.session_time']], ['Suspend data', sd.length + ' / 4096 chars'], ['Interactions', nI], ['Launch', '#' + launches + ' · entry ' + cmi['cmi.core.entry']]]
+      : [['Completion', cmi['cmi.completion_status']], ['Success', cmi['cmi.success_status']], ['Score (scaled)', cmi['cmi.score.scaled']], ['Progress', cmi['cmi.progress_measure']], ['Location', cmi['cmi.location']], ['Exit', cmi['cmi.exit']], ['Session time', cmi['cmi.session_time']], ['Suspend data', sd.length + ' / 64000 chars'], ['Interactions', nI], ['Launch', '#' + launches + ' · entry ' + cmi['cmi.entry']]];
+    document.getElementById('sum').innerHTML = '<div class="verdict ' + (errors ? 'bad' : 'ok') + '">' + (errors ? errors + ' API error(s) — see red rows' : 'No API errors (' + log.length + ' calls)') + '</div>' +
+      fields.map(function (f) { return '<div><span>' + esc(f[0]) + '</span><b>' + esc(f[1] === undefined ? '—' : f[1]) + '</b></div>'; }).join('');
+    var pane = document.getElementById('pane');
+    if (tab === 'log') {
+      pane.innerHTML = '<table><thead><tr><th>Time</th><th>Call</th><th>Result</th></tr></thead><tbody>' + log.slice(-400).reverse().map(function (r) {
+        return '<tr class="' + (r.err && r.err !== '0' ? 'err' : '') + '"><td>' + r.t + '</td><td class="mono">' + esc(r.fn) + '(' + esc(r.args.map(function (a) { a = String(a); return a.length > 80 ? a.slice(0, 80) + '…' : a; }).join(', ')) + ')</td><td class="mono">' + esc(String(r.ret).slice(0, 60)) + (r.err && r.err !== '0' ? ' · err ' + r.err : '') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    } else if (tab === 'model') {
+      pane.innerHTML = '<table><thead><tr><th>Element</th><th>Value</th></tr></thead><tbody>' + Object.keys(cmi).filter(function (k) { return k.indexOf('.interactions.') < 0; }).sort().map(function (k) {
+        return '<tr><td class="mono">' + esc(k) + '</td><td class="mono">' + esc(String(cmi[k]).slice(0, 600)) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    } else {
+      var rows = '';
+      for (var i = 0; i < nI; i++) {
+        var p = 'cmi.interactions.' + i + '.';
+        rows += '<tr><td>' + i + '</td><td class="mono">' + esc(cmi[p + 'id']) + '</td><td>' + esc(cmi[p + 'type'] || '') + '</td><td class="mono">' + esc(cmi[p + (is12 ? 'student_response' : 'learner_response')] || '') + '</td><td class="mono">' + esc(cmi[p + 'correct_responses.0.pattern'] || '') + '</td><td>' + esc(cmi[p + 'result'] || '') + '</td></tr>';
+      }
+      pane.innerHTML = '<table><thead><tr><th>#</th><th>Id</th><th>Type</th><th>Response</th><th>Correct</th><th>Result</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+  }
+
+  // Expose the API to the course iframe (it searches window.parent).
+  if (version === '2004') window.API_1484_11 = makeApi('2004'); else window.API = makeApi('1.2');
+  persist();
+  var frame = document.getElementById('frame');
+  frame.src = 'course.html?course=' + encodeURIComponent(courseSel.value);
+  render();
+
+  function reloadWith() {
+    var u = new URL(location.href);
+    u.searchParams.set('course', courseSel.value); u.searchParams.set('version', verSel.value);
+    if (masterySel.value) u.searchParams.set('mastery', masterySel.value); else u.searchParams.delete('mastery');
+    location.href = u.toString();
+  }
+  courseSel.onchange = verSel.onchange = masterySel.onchange = reloadWith;
+  document.getElementById('relaunch').onclick = function () {
+    // Unloading the iframe makes the course call Terminate (pagehide/unload), then we launch again.
+    frame.src = 'about:blank';
+    setTimeout(reloadWith, 300);
+  };
+  document.getElementById('reset').onclick = function () { sessionStorage.removeItem(key); try { localStorage.removeItem('els:' + courseSel.value); } catch (e) {} reloadWith(); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function (b) {
+    b.onclick = function () { tab = b.getAttribute('data-tab'); Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function (x) { x.setAttribute('aria-selected', x === b); }); render(); };
+  });
+  window.ELS_LMS_SIM = { cmi: function () { return cmi; }, log: function () { return log; }, errors: function () { return errors; } };
+})();
+</script>
+</body>
+</html>

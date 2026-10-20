@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500" font-family="Arial, sans-serif">
+  <rect width="800" height="500" fill="#f4f8fb"/>
+  <rect width="800" height="56" fill="#134674"/>
+  <text x="24" y="36" font-size="20" fill="#fff" font-weight="bold">EcoHome</text>
+  <circle cx="760" cy="28" r="14" fill="#3b759e"/>
+  <rect x="0" y="56" width="280" height="444" fill="#ffffff"/>
+  <g font-size="17" fill="#1f2d3a">
+    <rect x="16" y="76" width="248" height="44" rx="10" fill="#e8f1f7"/><text x="40" y="104">Dashboard</text>
+    <rect x="48" y="130" width="208" height="50" rx="10" fill="#ffffff" stroke="#d6e3ec"/><text x="70" y="161">Schedule</text>
+    <text x="40" y="218">Devices</text><text x="40" y="268">Reports</text><text x="40" y="318">Settings</text>
+  </g>
+  <rect x="304" y="80" width="472" height="300" rx="16" fill="#fff" stroke="#d6e3ec"/>
+  <text x="330" y="118" font-size="18" fill="#5b6b79">Living room</text>
+  <circle cx="540" cy="232" r="96" fill="none" stroke="#e1ecf3" stroke-width="18"/>
+  <path d="M470 300 A96 96 0 1 1 640 270" fill="none" stroke="#3b759e" stroke-width="18" stroke-linecap="round"/>
+  <text x="540" y="246" text-anchor="middle" font-size="48" font-weight="bold" fill="#134674">21°</text>
+  <text x="330" y="350" font-size="15" fill="#5b6b79">Night temperature</text>
+  <rect x="470" y="332" width="90" height="30" rx="8" fill="#f4f8fb" stroke="#c6d6e2"/><text x="482" y="353" font-size="15" fill="#1f2d3a">19 °C</text>
+  <rect x="304" y="400" width="200" height="56" rx="12" fill="#fff" stroke="#d6e3ec"/><text x="324" y="434" font-size="16" fill="#5b6b79">Cancel</text>
+  <rect x="560" y="400" width="176" height="56" rx="12" fill="#66cc00"/><text x="648" y="435" text-anchor="middle" font-size="18" font-weight="bold" fill="#fff">Save</text>
+</svg>

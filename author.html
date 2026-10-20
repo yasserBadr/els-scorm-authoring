@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>ELS Studio — interactive course authoring</title>
+		<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700&family=Work+Sans:wght@400;500;600;700&display=swap">
+		<link rel="stylesheet" href="css/author.css">
+	</head>
+	<body class="a-app">
+		<!--
+			ELS Studio: authoring tool for interactive, SCORM-compatible courses built on
+			this project's reveal.js player. Run `node tools/serve.js` and open
+			http://localhost:8080/author.html (SCORM export needs http://, not file://).
+		-->
+		<div class="a-shell">
+			<header class="a-header">
+				<div class="a-brand"><span class="a-brand-mark" id="brand-mark"></span><span>ELS Studio</span></div>
+				<input class="a-course-title" id="course-title" type="text" aria-label="Course title" dir="auto">
+				<button class="a-status-pill" id="status-pill" type="button" title="Validation status"></button>
+				<span class="a-header-spacer"></span>
+				<button class="a-hbtn" id="btn-undo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo"></button>
+				<button class="a-hbtn" id="btn-redo" type="button" title="Redo (Ctrl+Y)" aria-label="Redo"></button>
+				<button class="a-hbtn" id="btn-settings" type="button"></button>
+				<button class="a-hbtn" id="btn-play" type="button"></button>
+				<div class="a-menu-wrap">
+					<button class="a-hbtn" id="btn-file" type="button" aria-haspopup="true" aria-expanded="false"></button>
+					<div class="a-menu" id="menu-file" hidden role="menu"></div>
+				</div>
+				<button class="a-hbtn is-primary" id="btn-export" type="button"></button>
+			</header>
+			<main class="a-main">
+				<aside class="a-panel" aria-label="Screens">
+					<div class="a-panel-head"><h2>Screens</h2><span class="a-muted" id="screen-count"></span></div>
+					<div class="a-scroll" id="screen-scroll"><ol class="a-screens" id="screen-list"></ol></div>
+					<div class="a-list-foot"><button class="a-btn is-primary" id="btn-add" type="button"></button></div>
+				</aside>
+				<section class="a-stage" aria-label="Live preview">
+					<div class="a-stage-bar">
+						<div class="a-seg" role="group" aria-label="Device">
+							<button type="button" data-device="desktop" aria-pressed="true">Desktop</button>
+							<button type="button" data-device="tablet" aria-pressed="false">Tablet</button>
+							<button type="button" data-device="mobile" aria-pressed="false">Mobile</button>
+						</div>
+						<span class="a-stage-info" id="stage-info"></span>
+						<button class="a-btn is-sm" id="btn-restart-preview" type="button" title="Reset learner state in the preview"></button>
+					</div>
+					<div class="a-device-wrap"><div class="a-device" id="device"><iframe id="preview" title="Live preview" src="course.html?preview=1"></iframe></div></div>
+				</section>
+				<aside class="a-panel" aria-label="Screen editor" id="editor"></aside>
+			</main>
+		</div>
+		<div class="a-toasts" id="toasts" aria-live="polite"></div>
+		<input type="file" id="import-file" accept=".json,application/json,.js" hidden>
+
+		<script src="js/els/core.js"></script>
+		<script src="js/els/scorm.js"></script>
+		<script src="js/els/types/content.js"></script>
+		<script src="js/els/types/assessment.js"></script>
+		<script src="js/els/types/interactive.js"></script>
+		<script src="js/els/types/scenarios.js"></script>
+		<script src="js/els/types/games.js"></script>
+		<script src="js/els/types/advanced.js"></script>
+		<script src="courses/sample-en.js"></script>
+		<script src="courses/sample-ar.js"></script>
+		<script src="js/author/zip.js"></script>
+		<script src="js/author/packager.js"></script>
+		<script src="js/author/forms.js"></script>
+		<script src="js/author/app.js"></script>
+	</body>
+</html>

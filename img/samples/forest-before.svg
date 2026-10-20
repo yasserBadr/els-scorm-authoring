@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="800" height="450">
+  <rect width="800" height="450" fill="#d9d4c7"/>
+  <path d="M0 260 C200 200 380 230 560 180 C660 150 740 170 800 160 V450 H0Z" fill="#b59a74"/>
+  <path d="M0 330 C220 290 420 320 800 270 V450 H0Z" fill="#9c7f5a"/>
+  <g fill="#6d5034">
+    <rect x="90" y="300" width="22" height="18" rx="3"/><rect x="200" y="285" width="24" height="16" rx="3"/><rect x="330" y="300" width="20" height="16" rx="3"/>
+    <rect x="460" y="250" width="22" height="16" rx="3"/><rect x="590" y="235" width="24" height="16" rx="3"/><rect x="700" y="215" width="20" height="14" rx="3"/>
+    <rect x="150" y="360" width="26" height="18" rx="3"/><rect x="400" y="350" width="24" height="18" rx="3"/><rect x="620" y="320" width="26" height="18" rx="3"/>
+  </g>
+  <g fill="#c9b08a"><ellipse cx="101" cy="300" rx="11" ry="4"/><ellipse cx="212" cy="285" rx="12" ry="4"/><ellipse cx="412" cy="350" rx="12" ry="4"/><ellipse cx="633" cy="320" rx="13" ry="4"/></g>
+  <path d="M520 450 C540 400 600 380 640 330" stroke="#8a6d49" stroke-width="10" fill="none" opacity=".5"/>
+</svg>
